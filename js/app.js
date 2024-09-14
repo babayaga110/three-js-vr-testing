@@ -13,7 +13,7 @@ const polyfill = new WebXRPolyfill();
 // Scene setup
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-const renderer = new THREE.WebGLRenderer();
+const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setAnimationLoop(animate);
 document.body.appendChild(renderer.domElement);
@@ -28,11 +28,14 @@ const clock = new THREE.Clock();
 
 // Load textures
 const textureLoader = new THREE.TextureLoader();
-const grassTexture = textureLoader.load('textures/floor.png');
+const grassTexture = textureLoader.load('textures/floor.png',
+    undefined,
+    () => console.log('Failed to load texture'),
+);
 const skyTexture = textureLoader.load('textures/sky.jpg');
 
 // Configure grass texture to repeat
-grassTexture.wrapS = THREE.RepeatWrapping; 
+grassTexture.wrapS = THREE.RepeatWrapping;
 grassTexture.wrapT = THREE.RepeatWrapping;
 grassTexture.repeat.set(200, 200);
 
@@ -56,7 +59,7 @@ scene.add(grassFloor);
 // Add lighting
 const ambientLight = new THREE.AmbientLight(0x404040);
 const directionalLight = new THREE.DirectionalLight(0xffffff, 2);
-directionalLight.position.set(5, 10, 5).normalize();
+directionalLight.position.set(5, 10, 5);
 const pointLight = new THREE.PointLight(0xffffff, 1, 100);
 pointLight.position.set(0, 5, 0);
 scene.add(ambientLight);
@@ -65,7 +68,7 @@ scene.add(pointLight);
 
 // Load machine model
 const gltfLoader = new GLTFLoader();
-gltfLoader.load('models/machine.glb', function(object) {
+gltfLoader.load('models/machine.glb', function (object) {
     // No need for `object.scene`, the object itself is the mesh
     let machine = object.scene;
     machine.traverse((child) => {
@@ -84,24 +87,32 @@ gltfLoader.load('models/machine.glb', function(object) {
     machine.position.set(0, -1, 0); // Set position of the object
     machine.scale.set(7, 7, 7);     // Set scale of the object
     scene.add(machine);             // Add the object to the scene
-}, function ( xhr ) {
-    console.log( ( xhr.loaded / xhr.total * 100 ) + '% loaded' );
-}, function(error) {
+}, undefined, function (error) {
     console.error('An error occurred while loading the OBJ model:', error);
 });
 
 
 // Load person model and animations
 const fbxLoader = new FBXLoader();
-let person, mixer, idleAction, walkAction, leftturnAction, rightturnAction ,backwardsAction;
+let person, mixer, idleAction, walkAction, leftturnAction, rightturnAction, backwardsAction;
 let activeAction, previousAction;
 
-fbxLoader.load('models/Remy.fbx', function(fbx) {
+fbxLoader.load('models/Remy.fbx', function (fbx) {
     person = fbx;
     person.scale.set(0.01, 0.01, 0.01);
     person.position.set(15, -1, 0);
     scene.add(person);
-    console.log('Initial Rotation:', person.rotation);
+
+    person.traverse((child) => {
+        if (child.isMesh) {
+            // Check if the material has the shininess property (works with MeshPhongMaterial)
+            if (child.material && 'shininess' in child.material) {
+                child.material.shininess = 50; // Set shininess manually
+            }
+
+            child.material.needsUpdate = true; // Ensure the material updates properly
+        }
+    });
 
 
     mixer = new THREE.AnimationMixer(person);
@@ -133,19 +144,19 @@ fbxLoader.load('models/Remy.fbx', function(fbx) {
 
 // Function to switch animations
 function switchAnimation(toAction) {
-    if (toAction !== activeAction) {
+    if (activeAction && activeAction !== toAction) {
         previousAction = activeAction;
         activeAction = toAction;
 
         // Smooth animation transition
-        previousAction.fadeOut(0.5);
+        if (previousAction) previousAction.fadeOut(0.5);
         activeAction.reset().fadeIn(0.5).play();
     }
 }
 
 // Set camera position
 camera.position.set(10, 15, -20);
-camera.far = 2000; // or a higher value
+camera.far = 5000; // or a higher value
 camera.updateProjectionMatrix(); // Update the projection matrix after changing the far plane
 
 
@@ -190,20 +201,17 @@ window.addEventListener('keyup', (event) => {
         if (idleAction) switchAnimation(idleAction); // Switch back to idle
     }
 });
-window.addEventListener('keyleft', (event) => {
-    keyboard[event.code] = true;
+window.addEventListener('keydown', (event) => {
     if (event.code === 'ArrowLeft') {
         isMoving = true;
         if (leftturnAction) switchAnimation(leftturnAction);
     }
-});
-window.addEventListener('keyright', (event) => {
-    keyboard[event.code] = true;
     if (event.code === 'ArrowRight') {
         isMoving = true;
         if (rightturnAction) switchAnimation(rightturnAction);
     }
 });
+
 function updateCamera() {
     if (person) {
         // Define an offset from the person’s position
@@ -299,7 +307,7 @@ function animate() {
 
     if (mixer) mixer.update(delta);
     handleMovement(); // Handle keyboard movement
-    if(isMoving){
+    if (isMoving) {
         updateCamera(); // Update camera position
         updateLighting(); // Update lighting position
     }
