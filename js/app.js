@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { VRButton } from 'three/addons/webxr/VRButton.js';
-import { Line } from 'three';
 import WebXRPolyfill from 'https://cdn.jsdelivr.net/npm/webxr-polyfill@2.0.3/+esm';
 
 // Initialize the polyfill
@@ -119,10 +118,42 @@ const markerGeometry = new THREE.SphereGeometry(0.2, 16, 16);
 const markerMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
 let markers = [];
 
-// Event listener for selecting points on the machine
-window.addEventListener('click', onMouseClick, false);
+// VR controller setup
+const controller1 = renderer.xr.getController(0);
+const controller2 = renderer.xr.getController(1);
+scene.add(controller1);
+scene.add(controller2);
 
-// Toggle measurement tool on or off
+// Event listener for selecting points with VR controllers
+renderer.xr.addEventListener('selectstart', onVRSelectStart);
+
+function onVRSelectStart(event) {
+    const controller = event.target;
+    const intersection = getControllerIntersection(controller);
+
+    if (measurementEnabled && intersection) {
+        const intersectedPoint = intersection.point;
+        if (selectedPoint) {
+            const distance = selectedPoint.distanceTo(intersectedPoint);
+            instructionDiv.innerHTML = `Distance: ${distance.toFixed(2)} meters. Click to measure again.`;
+            if (measurementLine) {
+                scene.remove(measurementLine);
+            }
+            if (markers.length > 0) {
+                markers.forEach(marker => scene.remove(marker));
+                markers = [];
+            }
+            drawLine(selectedPoint, intersectedPoint);
+            selectedPoint = null;
+        } else {
+            selectedPoint = intersectedPoint;
+            addMarker(selectedPoint);
+            instructionDiv.innerHTML = 'Click on a second point to measure distance';
+        }
+    }
+}
+
+// Add toggle button
 const toggleButton = document.createElement('button');
 toggleButton.innerHTML = 'Toggle Measurement Tool';
 toggleButton.style.position = 'absolute';
@@ -133,6 +164,7 @@ toggleButton.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
 toggleButton.style.color = 'white';
 toggleButton.style.border = 'none';
 toggleButton.style.borderRadius = '5px';
+toggleButton.style.zIndex = 1; // Ensure button is on top
 document.body.appendChild(toggleButton);
 
 toggleButton.addEventListener('click', () => {
@@ -154,43 +186,12 @@ resetButton.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
 resetButton.style.color = 'white';
 resetButton.style.border = 'none';
 resetButton.style.borderRadius = '5px';
+resetButton.style.zIndex = 1; // Ensure button is on top
 document.body.appendChild(resetButton);
 
 resetButton.addEventListener('click', () => {
     resetMeasurement();
 });
-
-function onMouseClick(event) {
-    if (!measurementEnabled) return;
-
-    // Normalize mouse position
-    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-
-    raycaster.setFromCamera(mouse, camera);
-    const intersects = raycaster.intersectObject(machine, true);
-    
-    if (intersects.length > 0) {
-        const intersectedPoint = intersects[0].point;
-        if (selectedPoint) {
-            const distance = selectedPoint.distanceTo(intersectedPoint);
-            instructionDiv.innerHTML = `Distance: ${distance.toFixed(2)} meters. Click to measure again.`;
-            if (measurementLine) {
-                scene.remove(measurementLine);
-            }
-            if (markers.length > 0) {
-                markers.forEach(marker => scene.remove(marker));
-                markers = [];
-            }
-            drawLine(selectedPoint, intersectedPoint);
-            selectedPoint = null;
-        } else {
-            selectedPoint = intersectedPoint;
-            addMarker(selectedPoint);
-            instructionDiv.innerHTML = 'Click on a second point to measure distance';
-        }
-    }
-}
 
 function drawLine(start, end) {
     const geometry = new THREE.BufferGeometry().setFromPoints([start, end]);
@@ -219,21 +220,7 @@ function resetMeasurement() {
     instructionDiv.innerHTML = measurementEnabled ? 'Click on two points to measure distance' : 'Measurement tool is off';
 }
 
-// Animation loop
-function animate() {
-    controls.update();
-    renderer.render(scene, camera);
-}
-
-// Detect controller interaction
-renderer.xr.addEventListener('select', (event) => {
-    const controller = event.target;
-    const intersection = getControllerIntersection(controller);
-    if (intersection) {
-        console.log('Interacted with:', intersection.object.name);
-    }
-});
-
+// Get the intersection point of the controller ray with the machine
 function getControllerIntersection(controller) {
     const tempMatrix = new THREE.Matrix4();
     tempMatrix.identity().extractRotation(controller.matrixWorld);
@@ -242,3 +229,71 @@ function getControllerIntersection(controller) {
 
     return raycaster.intersectObject(machine, true)[0];
 }
+
+// Handle mouse clicks for measurement
+function onMouseClick(event) {
+    event.preventDefault();
+    
+    if (!measurementEnabled) return;
+    
+    const rect = renderer.domElement.getBoundingClientRect();
+    mouse.x = (event.clientX - rect.left) / rect.width * 2 - 1;
+    mouse.y = - (event.clientY - rect.top) / rect.height * 2 + 1;
+
+    raycaster.setFromCamera(mouse, camera);
+    const intersects = raycaster.intersectObject(machine, true);
+
+    if (intersects.length > 0) {
+        const intersectedPoint = intersects[0].point;
+        if (selectedPoint) {
+            const distance = selectedPoint.distanceTo(intersectedPoint);
+            instructionDiv.innerHTML = `Distance: ${distance.toFixed(2)} meters. Click to measure again.`;
+            if (measurementLine) {
+                scene.remove(measurementLine);
+            }
+            if (markers.length > 0) {
+                markers.forEach(marker => scene.remove(marker));
+                markers = [];
+            }
+            drawLine(selectedPoint, intersectedPoint);
+            selectedPoint = null;
+        } else {
+            selectedPoint = intersectedPoint;
+            addMarker(selectedPoint);
+            instructionDiv.innerHTML = 'Click on a second point to measure distance';
+        }
+    }
+}
+
+function handleVRControls(controller) {
+    const controllerState = controller.gamepad;
+    if (controllerState) {
+        const zoomSpeed = 0.1; // Speed at which the camera zooms in/out
+        const rotationSpeed = 0.02; // Speed at which the camera rotates
+
+        // Handle zooming
+        if (controllerState.axes[1]) { // Assuming axis[1] controls zoom
+            camera.position.z += controllerState.axes[1] * zoomSpeed;
+        }
+
+        // Handle rotation
+        if (controllerState.axes[0]) { // Assuming axis[0] controls horizontal rotation
+            camera.rotation.y += controllerState.axes[0] * rotationSpeed;
+        }
+        if (controllerState.axes[3]) { // Assuming axis[3] controls vertical rotation
+            camera.rotation.x += controllerState.axes[3] * rotationSpeed;
+        }
+    }
+}
+
+// In your animation loop or VR controller update function
+function animate() {
+    controls.update();
+    handleVRControls(renderer.xr.getController(0)); // Handle controls for the first controller
+    handleVRControls(renderer.xr.getController(1)); // Handle controls for the second controller
+    renderer.render(scene, camera);
+}
+
+
+document.addEventListener('click', onMouseClick);
+
