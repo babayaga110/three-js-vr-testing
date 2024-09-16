@@ -1,14 +1,12 @@
 import * as THREE from 'three';
-import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { VRButton } from 'three/addons/webxr/VRButton.js';
-
-import WebXRPolyfill from 'https://cdn.jsdelivr.net/npm/webxr-polyfill@2.0.3/+esm'
+import { Line } from 'three';
+import WebXRPolyfill from 'https://cdn.jsdelivr.net/npm/webxr-polyfill@2.0.3/+esm';
 
 // Initialize the polyfill
 const polyfill = new WebXRPolyfill();
-
 
 // Scene setup
 const scene = new THREE.Scene();
@@ -21,17 +19,24 @@ document.body.appendChild(renderer.domElement);
 // Add VR button
 document.body.appendChild(VRButton.createButton(renderer));
 
-renderer.xr.enabled = true;
+// Create a div to show the message
+const instructionDiv = document.createElement('div');
+instructionDiv.style.position = 'absolute';
+instructionDiv.style.top = '10px';
+instructionDiv.style.left = '10px';
+instructionDiv.style.color = 'white';
+instructionDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+instructionDiv.style.padding = '10px';
+instructionDiv.style.borderRadius = '5px';
+instructionDiv.innerHTML = "Measurement tool is off";
+document.body.appendChild(instructionDiv);
 
-// Add clock for animations
-const clock = new THREE.Clock();
+// Renderer setup
+renderer.xr.enabled = true;
 
 // Load textures
 const textureLoader = new THREE.TextureLoader();
-const grassTexture = textureLoader.load('textures/floor.png',
-    undefined,
-    () => console.log('Failed to load texture'),
-);
+const grassTexture = textureLoader.load('textures/floor.png');
 const skyTexture = textureLoader.load('textures/sky.jpg');
 
 // Configure grass texture to repeat
@@ -60,105 +65,34 @@ scene.add(grassFloor);
 const ambientLight = new THREE.AmbientLight(0x404040);
 const directionalLight = new THREE.DirectionalLight(0xffffff, 2);
 directionalLight.position.set(5, 10, 5);
-const pointLight = new THREE.PointLight(0xffffff, 1, 100);
-pointLight.position.set(0, 5, 0);
 scene.add(ambientLight);
 scene.add(directionalLight);
-scene.add(pointLight);
 
 // Load machine model
 const gltfLoader = new GLTFLoader();
+let machine;
 gltfLoader.load('models/machine.glb', function (object) {
-    // No need for `object.scene`, the object itself is the mesh
-    let machine = object.scene;
+    machine = object.scene;
     machine.traverse((child) => {
         if (child.isMesh) {
             child.geometry.computeBoundingBox();
             const bbox = child.geometry.boundingBox;
             const height = bbox.max.y - bbox.min.y;
             machine.position.y = -1 + height / 2; // Adjust position
-
-            if (child.material) {
-                child.material.needsUpdate = true;
-            }
         }
     });
 
-    machine.position.set(0, -1, 0); // Set position of the object
-    machine.scale.set(7, 7, 7);     // Set scale of the object
-    scene.add(machine);             // Add the object to the scene
+    machine.scale.set(1, 1, 1); // Adjust scaling based on your model's real-world size.
+    machine.position.set(0, -1, 0);
+    scene.add(machine);
 }, undefined, function (error) {
-    console.error('An error occurred while loading the OBJ model:', error);
+    console.error('An error occurred while loading the GLB model:', error);
 });
-
-
-// Load person model and animations
-const fbxLoader = new FBXLoader();
-let person, mixer, idleAction, walkAction, leftturnAction, rightturnAction, backwardsAction;
-let activeAction, previousAction;
-
-fbxLoader.load('models/Remy.fbx', function (fbx) {
-    person = fbx;
-    person.scale.set(0.01, 0.01, 0.01);
-    person.position.set(15, -1, 0);
-    scene.add(person);
-
-    person.traverse((child) => {
-        if (child.isMesh) {
-            // Check if the material has the shininess property (works with MeshPhongMaterial)
-            if (child.material && 'shininess' in child.material) {
-                child.material.shininess = 50; // Set shininess manually
-            }
-
-            child.material.needsUpdate = true; // Ensure the material updates properly
-        }
-    });
-
-
-    mixer = new THREE.AnimationMixer(person);
-
-    // Load and assign animations
-    fbxLoader.load('animations/Idle.fbx', (animation) => {
-        idleAction = mixer.clipAction(animation.animations[0]);
-        idleAction.play(); // Start with idle animation
-        activeAction = idleAction;
-    });
-
-    fbxLoader.load('animations/Walking.fbx', (animation) => {
-        walkAction = mixer.clipAction(animation.animations[0]);
-        walkAction.setLoop(THREE.LoopRepeat);
-    });
-    fbxLoader.load('animations/LeftTurn.fbx', (animation) => {
-        leftturnAction = mixer.clipAction(animation.animations[0]);
-    }
-    );
-    fbxLoader.load('animations/RightTurn.fbx', (animation) => {
-        rightturnAction = mixer.clipAction(animation.animations[0]);
-    }
-    );
-    fbxLoader.load('animations/BackwardWalking.fbx', (animation) => {
-        backwardsAction = mixer.clipAction(animation.animations[0]);
-    }
-    );
-});
-
-// Function to switch animations
-function switchAnimation(toAction) {
-    if (activeAction && activeAction !== toAction) {
-        previousAction = activeAction;
-        activeAction = toAction;
-
-        // Smooth animation transition
-        if (previousAction) previousAction.fadeOut(0.5);
-        activeAction.reset().fadeIn(0.5).play();
-    }
-}
 
 // Set camera position
 camera.position.set(10, 15, -20);
-camera.far = 5000; // or a higher value
-camera.updateProjectionMatrix(); // Update the projection matrix after changing the far plane
-
+camera.far = 5000;
+camera.updateProjectionMatrix(); 
 
 // Add OrbitControls
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -166,150 +100,145 @@ controls.enableDamping = true;
 controls.dampingFactor = 0.25;
 controls.enableZoom = true;
 controls.enablePan = true;
-
-controls.maxDistance = 600; // Set a maximum zoom out distance
-// controls.minDistance = 10;  // Set a minimum zoom in distance
-
-
-// Restrict rotation to prevent the camera from going beneath the floor
+controls.maxDistance = 600;
 controls.minPolarAngle = 0;
 controls.maxPolarAngle = Math.PI / 2.2;
 
-const floorY = -1;
-const moveSpeed = 0.1;
-const keyboard = {};
-const rotationSpeed = 0.05;
-let isMoving = false;
+// Raycaster for interaction detection
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+let selectedPoint = null;
+let measurementEnabled = false; // Track if measurement tool is active
 
-// Movement constraints
-const movementArea = 30; // Size of the movement area around the machine
+// Create a line to display measurements
+const lineMaterial = new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 2 });
+let measurementLine = null;
 
+// Create markers for selected points
+const markerGeometry = new THREE.SphereGeometry(0.2, 16, 16);
+const markerMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+let markers = [];
 
+// Event listener for selecting points on the machine
+window.addEventListener('click', onMouseClick, false);
 
-window.addEventListener('keydown', (event) => {
-    keyboard[event.code] = true;
-    if (event.code === 'ArrowUp' || event.code === 'ArrowDown') {
-        isMoving = true;
-        if (walkAction) switchAnimation(walkAction);
+// Toggle measurement tool on or off
+const toggleButton = document.createElement('button');
+toggleButton.innerHTML = 'Toggle Measurement Tool';
+toggleButton.style.position = 'absolute';
+toggleButton.style.top = '50px';
+toggleButton.style.left = '10px';
+toggleButton.style.padding = '10px';
+toggleButton.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+toggleButton.style.color = 'white';
+toggleButton.style.border = 'none';
+toggleButton.style.borderRadius = '5px';
+document.body.appendChild(toggleButton);
+
+toggleButton.addEventListener('click', () => {
+    measurementEnabled = !measurementEnabled;
+    instructionDiv.innerHTML = measurementEnabled ? 'Click on two points to measure distance' : 'Measurement tool is off';
+    if (!measurementEnabled) {
+        resetMeasurement(); // Reset if tool is turned off
     }
 });
 
-window.addEventListener('keyup', (event) => {
-    keyboard[event.code] = false;
-    if (!keyboard['ArrowUp'] && !keyboard['ArrowDown']) {
-        isMoving = false;
-        if (idleAction) switchAnimation(idleAction); // Switch back to idle
-    }
+// Add reset button
+const resetButton = document.createElement('button');
+resetButton.innerHTML = 'Reset Measurement';
+resetButton.style.position = 'absolute';
+resetButton.style.top = '90px';
+resetButton.style.left = '10px';
+resetButton.style.padding = '10px';
+resetButton.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+resetButton.style.color = 'white';
+resetButton.style.border = 'none';
+resetButton.style.borderRadius = '5px';
+document.body.appendChild(resetButton);
+
+resetButton.addEventListener('click', () => {
+    resetMeasurement();
 });
-window.addEventListener('keydown', (event) => {
-    if (event.code === 'ArrowLeft') {
-        isMoving = true;
-        if (leftturnAction) switchAnimation(leftturnAction);
-    }
-    if (event.code === 'ArrowRight') {
-        isMoving = true;
-        if (rightturnAction) switchAnimation(rightturnAction);
-    }
-});
 
-function updateCamera() {
-    if (person) {
-        // Define an offset from the person’s position
-        const offset = new THREE.Vector3(0, 5, -10); // Position the camera behind and above
-        // Create a matrix to apply the person's rotation
-        const rotationMatrix = new THREE.Matrix4().makeRotationY(person.rotation.y);
-        // Apply rotation to the offset vector
-        const rotatedOffset = offset.applyMatrix4(rotationMatrix);
+function onMouseClick(event) {
+    if (!measurementEnabled) return;
 
-        // Set the camera’s position based on the rotated offset
-        const cameraPosition = person.position.clone().add(rotatedOffset);
-        camera.position.copy(cameraPosition);
+    // Normalize mouse position
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
 
-        // Ensure the camera always looks at the person
-        camera.lookAt(person.position);
-    }
-}
-
-
-function updateLighting() {
-    if (person) {
-        // Position the directional light to always be in front and above the person
-        directionalLight.position.copy(person.position).add(new THREE.Vector3(10, 10, 10));
-
-        // Position the point light close to the person
-        pointLight.position.copy(person.position).add(new THREE.Vector3(0, 5, 0));
-    }
-}
-
-
-
-
-// Adjust rotation speed and movement spe
-function handleMovement() {
-    if (person) {
-
-        // Adjust direction vectors for movement
-        const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(person.quaternion); // Forward direction
-        const right = new THREE.Vector3(1, 0, 0).applyQuaternion(person.quaternion); // Right direction
-
-        let newPosition = person.position.clone();
-
-        // Adjust movement keys
-        if (keyboard['ArrowUp']) {
-            newPosition.add(forward.multiplyScalar(moveSpeed));
-            if (walkAction) switchAnimation(walkAction);
-        }
-        if (keyboard['ArrowDown']) {
-            newPosition.add(forward.multiplyScalar(-moveSpeed));
-            if (backwardsAction) switchAnimation(backwardsAction);
-        }
-        if (keyboard['ArrowLeft']) {
-            // Rotate the person to the left
-            person.rotation.y += rotationSpeed;
-            if (leftturnAction) switchAnimation(leftturnAction);
-        }
-        if (keyboard['ArrowRight']) {
-            // Rotate the person to the right
-            person.rotation.y -= rotationSpeed;
-            if (rightturnAction) switchAnimation(rightturnAction);
-        }
-
-        // Ensure the model's bounding box is used to determine correct positioning
-        person.traverse((child) => {
-            if (child.isMesh) {
-                child.geometry.computeBoundingBox();
-                const bbox = child.geometry.boundingBox;
-                const height = bbox.max.y - bbox.min.y;
-                person.position.y = Math.max(floorY + height / 2, person.position.y);
+    raycaster.setFromCamera(mouse, camera);
+    const intersects = raycaster.intersectObject(machine, true);
+    
+    if (intersects.length > 0) {
+        const intersectedPoint = intersects[0].point;
+        if (selectedPoint) {
+            const distance = selectedPoint.distanceTo(intersectedPoint);
+            instructionDiv.innerHTML = `Distance: ${distance.toFixed(2)} meters. Click to measure again.`;
+            if (measurementLine) {
+                scene.remove(measurementLine);
             }
-        });
-
-        // Check if new position is within the allowed area around the machine
-        const distanceToMachine = newPosition.distanceTo(new THREE.Vector3(0, 0, 0));
-        if (distanceToMachine < movementArea) {
-            person.position.copy(newPosition);
+            if (markers.length > 0) {
+                markers.forEach(marker => scene.remove(marker));
+                markers = [];
+            }
+            drawLine(selectedPoint, intersectedPoint);
+            selectedPoint = null;
+        } else {
+            selectedPoint = intersectedPoint;
+            addMarker(selectedPoint);
+            instructionDiv.innerHTML = 'Click on a second point to measure distance';
         }
-
-        // Constrain movement to stay on the floor
-        if (person.position.y < floorY) {
-            person.position.y = floorY;
-        }
-
     }
 }
 
+function drawLine(start, end) {
+    const geometry = new THREE.BufferGeometry().setFromPoints([start, end]);
+    measurementLine = new THREE.Line(geometry, lineMaterial);
+    scene.add(measurementLine);
+}
 
+function addMarker(position) {
+    const marker = new THREE.Mesh(markerGeometry, markerMaterial);
+    marker.position.copy(position);
+    marker.scale.set(0.05, 0.05, 0.05);
+    scene.add(marker);
+    markers.push(marker);
+}
+
+function resetMeasurement() {
+    selectedPoint = null;
+    if (measurementLine) {
+        scene.remove(measurementLine);
+        measurementLine = null;
+    }
+    if (markers.length > 0) {
+        markers.forEach(marker => scene.remove(marker));
+        markers = [];
+    }
+    instructionDiv.innerHTML = measurementEnabled ? 'Click on two points to measure distance' : 'Measurement tool is off';
+}
 
 // Animation loop
 function animate() {
-    const delta = clock.getDelta();
     controls.update();
-
-    if (mixer) mixer.update(delta);
-    handleMovement(); // Handle keyboard movement
-    if (isMoving) {
-        updateCamera(); // Update camera position
-        updateLighting(); // Update lighting position
-    }
     renderer.render(scene, camera);
+}
+
+// Detect controller interaction
+renderer.xr.addEventListener('select', (event) => {
+    const controller = event.target;
+    const intersection = getControllerIntersection(controller);
+    if (intersection) {
+        console.log('Interacted with:', intersection.object.name);
+    }
+});
+
+function getControllerIntersection(controller) {
+    const tempMatrix = new THREE.Matrix4();
+    tempMatrix.identity().extractRotation(controller.matrixWorld);
+    raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+    raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+
+    return raycaster.intersectObject(machine, true)[0];
 }
