@@ -107,7 +107,7 @@ gltfLoader.load('models/machine.glb', function (object) {
 });
 
 // Set camera position
-camera.position.set(20, 0, 0);
+camera.position.set(10, 0, 0);
 camera.far = 5000;
 camera.updateProjectionMatrix(); 
 
