@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { VRButton } from 'three/addons/webxr/VRButton.js';
+import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
+
 import WebXRPolyfill from 'https://cdn.jsdelivr.net/npm/webxr-polyfill@2.0.3/+esm';
 
 // Initialize the polyfill
@@ -32,6 +34,22 @@ document.body.appendChild(instructionDiv);
 
 // Renderer setup
 renderer.xr.enabled = true;
+// VR controller setup
+const controller1 = renderer.xr.getController(0);
+const controller2 = renderer.xr.getController(1);
+scene.add(controller1);
+scene.add(controller2);
+
+// Add models for controllers
+const controllerModelFactory = new XRControllerModelFactory();
+const controllerGrip1 = renderer.xr.getControllerGrip(0);
+controllerGrip1.add(controllerModelFactory.createControllerModel(controllerGrip1));
+scene.add(controllerGrip1);
+
+const controllerGrip2 = renderer.xr.getControllerGrip(1);
+controllerGrip2.add(controllerModelFactory.createControllerModel(controllerGrip2));
+scene.add(controllerGrip2);
+
 
 // Load textures
 const textureLoader = new THREE.TextureLoader();
@@ -118,37 +136,26 @@ const markerGeometry = new THREE.SphereGeometry(0.2, 16, 16);
 const markerMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
 let markers = [];
 
-// VR controller setup
-const controller1 = renderer.xr.getController(0);
-const controller2 = renderer.xr.getController(1);
-scene.add(controller1);
-scene.add(controller2);
 
-// Event listener for selecting points with VR controllers
-renderer.xr.addEventListener('selectstart', onVRSelectStart);
 
-function onVRSelectStart(event) {
-    const controller = event.target;
-    const intersection = getControllerIntersection(controller);
+// Function to handle controller inputs
+function handleVRControls(controller) {
+    const controllerState = controller.gamepad;
+    if (controllerState) {
+        const zoomSpeed = 0.1;
+        const rotationSpeed = 0.02;
 
-    if (measurementEnabled && intersection) {
-        const intersectedPoint = intersection.point;
-        if (selectedPoint) {
-            const distance = selectedPoint.distanceTo(intersectedPoint);
-            instructionDiv.innerHTML = `Distance: ${distance.toFixed(2)} meters. Click to measure again.`;
-            if (measurementLine) {
-                scene.remove(measurementLine);
-            }
-            if (markers.length > 0) {
-                markers.forEach(marker => scene.remove(marker));
-                markers = [];
-            }
-            drawLine(selectedPoint, intersectedPoint);
-            selectedPoint = null;
-        } else {
-            selectedPoint = intersectedPoint;
-            addMarker(selectedPoint);
-            instructionDiv.innerHTML = 'Click on a second point to measure distance';
+        // Handle zooming (trigger controls zooming)
+        if (controllerState.axes[1]) {
+            camera.position.z += controllerState.axes[1] * zoomSpeed;
+        }
+
+        // Handle rotation (joystick controls rotation)
+        if (controllerState.axes[0]) {
+            camera.rotation.y += controllerState.axes[0] * rotationSpeed;
+        }
+        if (controllerState.axes[3]) {
+            camera.rotation.x += controllerState.axes[3] * rotationSpeed;
         }
     }
 }
@@ -215,20 +222,12 @@ function resetMeasurement() {
     }
     if (markers.length > 0) {
         markers.forEach(marker => scene.remove(marker));
-        markers = [];
+        markers = []; 
     }
     instructionDiv.innerHTML = measurementEnabled ? 'Click on two points to measure distance' : 'Measurement tool is off';
 }
 
-// Get the intersection point of the controller ray with the machine
-function getControllerIntersection(controller) {
-    const tempMatrix = new THREE.Matrix4();
-    tempMatrix.identity().extractRotation(controller.matrixWorld);
-    raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
-    raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
 
-    return raycaster.intersectObject(machine, true)[0];
-}
 
 // Handle mouse clicks for measurement
 function onMouseClick(event) {
@@ -265,26 +264,6 @@ function onMouseClick(event) {
     }
 }
 
-function handleVRControls(controller) {
-    const controllerState = controller.gamepad;
-    if (controllerState) {
-        const zoomSpeed = 0.1; // Speed at which the camera zooms in/out
-        const rotationSpeed = 0.02; // Speed at which the camera rotates
-
-        // Handle zooming
-        if (controllerState.axes[1]) { // Assuming axis[1] controls zoom
-            camera.position.z += controllerState.axes[1] * zoomSpeed;
-        }
-
-        // Handle rotation
-        if (controllerState.axes[0]) { // Assuming axis[0] controls horizontal rotation
-            camera.rotation.y += controllerState.axes[0] * rotationSpeed;
-        }
-        if (controllerState.axes[3]) { // Assuming axis[3] controls vertical rotation
-            camera.rotation.x += controllerState.axes[3] * rotationSpeed;
-        }
-    }
-}
 
 // In your animation loop or VR controller update function
 function animate() {
